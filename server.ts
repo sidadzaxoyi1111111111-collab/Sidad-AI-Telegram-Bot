@@ -5,66 +5,59 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 
 async function startServer() {
+  const botToken = '8753625924:AAG8Xbm9KkMr-zO7LVH_FpRSPUvgKAoS6_I';
+  const geminiApiKey = 'AIzaSyBGKVCmpMuELfmWs72_cvgjyTKHqZdeTP8';
+  const appUrl = 'https://ais-dev-5iodngtzcdu3rfwersxshs-210108824477.europe-west1.run.app';
+
+  const SYSTEM_PROMPT = "تۆ Sidad AI یی، خەلکێ زاخۆیی و ب زمانێ بادینی (زاخۆیی) باخڤە.";
+
   const app = express();
+  app.use(express.json());
   const PORT = 3000;
 
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  const appUrl = process.env.APP_URL;
-
   // Initialize Gemini
-  const genAI = new GoogleGenAI({ apiKey: geminiApiKey || '' });
-  const model = genAI.models.get({ model: 'gemini-2.0-flash' });
-
+  const genAI = new GoogleGenAI({ apiKey: geminiApiKey });
+  
   // Initialize Telegram Bot
   let bot: Telegraf | null = null;
   if (botToken) {
     bot = new Telegraf(botToken);
 
-    bot.start((ctx) => ctx.reply('Welcome to Sidad AI! Send me any message and I will reply using Gemini.'));
-    bot.help((ctx) => ctx.reply('Just send me a message!'));
-
     bot.on('text', async (ctx) => {
       try {
-        const userMessage = ctx.message.text;
+        await ctx.sendChatAction('typing');
+        // ل ڤێرە SYSTEM_PROMPT دهێتە تێکەڵکرن دا کو بەرسڤ ب زارۆکێ زاخۆیی بیت
         const result = await genAI.models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+          model: 'gemini-2.0-flash-exp',
+          contents: [{ role: 'user', parts: [{ text: `${SYSTEM_PROMPT}\nUser: ${ctx.message.text}` }] }],
         });
         
-        const responseText = result.text || 'Sorry, I could not generate a response.';
+        const responseText = result.text || 'ببوورە، من نەشیا بەرسڤێ چێکەم.';
         await ctx.reply(responseText);
-      } catch (error) {
-        console.error('Error generating response:', error);
-        await ctx.reply('Oops! Something went wrong while processing your request.');
+      } catch (e) {
+        console.error("Error in Gemini 3:", e);
+        await ctx.reply("ببوورە برا، نوکە کێشەیەک دگەل مۆدێلێ Gemini 3 هەیە.");
       }
     });
 
-    // Set up webhook if APP_URL is provided
-    if (appUrl) {
-      const webhookPath = `/telegraf/${bot.secretPathComponent()}`;
-      app.use(bot.webhookCallback(webhookPath));
-      
-      try {
-        await bot.telegram.setWebhook(`${appUrl}${webhookPath}`);
-        console.log(`Webhook set to ${appUrl}${webhookPath}`);
-      } catch (e) {
-        console.error('Failed to set webhook:', e);
-      }
-    } else {
-      console.log('APP_URL not found, starting polling mode...');
-      bot.launch();
-    }
+    // Polling setup (Webhook disabled)
+    // app.use(bot.webhookCallback(`/bot${botToken}`));
   } else {
     console.warn('TELEGRAM_BOT_TOKEN not found. Bot will not start.');
   }
 
-  // API Routes
+  let botRunning = false;
+
+  // Root route
+  app.get('/', (req, res) => res.send('Sidad AI is ONLINE (Flash Edition)! ✅'));
+
+  // Status API
   app.get('/api/status', (req, res) => {
     res.json({
-      botStatus: botToken ? 'Initialized' : 'Missing Token',
-      geminiStatus: geminiApiKey ? 'Initialized' : 'Missing API Key',
-      webhookUrl: appUrl ? `${appUrl}/telegraf/...` : 'Polling Mode',
+      botStatus: botToken ? (botRunning ? 'Running' : 'Initialized') : 'Missing Token',
+      geminiStatus: geminiApiKey ? 'Initialized' : 'Missing Key',
+      webhookUrl: null, // Polling mode
+      mode: 'Polling'
     });
   });
 
@@ -83,8 +76,19 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`✅ Server is running on port ${PORT}`);
+    if (bot && botToken) {
+      try {
+        console.log("🔄 Stopping potential webhooks and starting Polling...");
+        await bot.telegram.deleteWebhook();
+        bot.launch();
+        botRunning = true;
+        console.log("✅ Sidad AI is now ONLINE (Polling Mode)!");
+      } catch (err) {
+        console.error("Failed to start polling:", err);
+      }
+    }
   });
 
   // Graceful stop

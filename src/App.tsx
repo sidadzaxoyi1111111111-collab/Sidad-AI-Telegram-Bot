@@ -4,13 +4,23 @@ import { motion } from 'motion/react';
 
 export default function App() {
   const [status, setStatus] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch('/api/status')
-      .then(res => res.json())
-      .then(data => setStatus(data))
-      .catch(err => console.error('Failed to fetch status:', err));
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to connect to the bot API.');
+        return res.json();
+      })
+      .then(data => {
+        setStatus(data);
+        setError(null);
+      })
+      .catch(err => {
+        console.error('Failed to fetch status:', err);
+        setError('Failed to connect to the bot API.');
+      });
   }, []);
 
   const copyToClipboard = (text: string) => {
@@ -40,7 +50,7 @@ export default function App() {
               <Bot className="w-8 h-8 text-emerald-400" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold tracking-tight">Sidad AI</h1>
+              <h1 className="text-4xl font-bold tracking-tight">Sidad AI <span className="text-emerald-500 text-2xl block md:inline md:ml-2">(Zakho Edition)</span></h1>
               <p className="text-zinc-400">Telegram Bot Dashboard</p>
             </div>
           </div>
@@ -49,13 +59,13 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StatusCard 
               title="Bot Status" 
-              value={status?.botStatus || 'Checking...'} 
+              value={error || status?.botStatus || 'Checking...'} 
               icon={<MessageSquare className="w-5 h-5" />}
-              active={status?.botStatus === 'Initialized'}
+              active={status?.botStatus === 'Running' || status?.botStatus === 'Initialized'}
             />
             <StatusCard 
               title="Gemini AI" 
-              value={status?.geminiStatus || 'Checking...'} 
+              value={error ? 'Unavailable' : (status?.geminiStatus || 'Checking...')} 
               icon={<ShieldCheck className="w-5 h-5" />}
               active={status?.geminiStatus === 'Initialized'}
             />
